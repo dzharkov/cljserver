@@ -22,7 +22,7 @@ fun main(args: Array<String>) {
     val readingBuffers = hashMapOf<SocketChannel, ByteBuffer>()
     val writingBuffers = hashMapOf<SocketChannel, ByteBuffer>()
 
-    val executorService = Executors.newFixedThreadPool(200)
+    val executorService = Executors.newFixedThreadPool(4)
     val taskResults = ConcurrentLinkedQueue<TaskResult>()
     
     var maxActiveClients = 0
@@ -45,11 +45,11 @@ fun main(args: Array<String>) {
                 client.socket().setTcpNoDelay(true)
                 client.register(
                         selector, 
-                        SelectionKey.OP_READ or SelectionKey.OP_WRITE or SelectionKey.OP_CONNECT
+                        SelectionKey.OP_READ or SelectionKey.OP_CONNECT
                 )
 
-                writingBuffers[client] = ByteBuffer.allocate(10000).limit(0) as ByteBuffer
-                readingBuffers[client] = ByteBuffer.allocate(10000).limit(4) as ByteBuffer
+                writingBuffers[client] = ByteBuffer.allocate(200000).limit(0) as ByteBuffer
+                readingBuffers[client] = ByteBuffer.allocate(200000).limit(4) as ByteBuffer
                 maxActiveClients = Math.max(maxActiveClients, readingBuffers.size())
             } else {
                 val channel = key.socketChannel()
@@ -87,6 +87,9 @@ fun main(args: Array<String>) {
                         val buffer = writingBuffers[channel]
                         if (buffer.hasRemaining()) {
                             channel.write(buffer)
+                            if (!buffer.hasRemaining()) {
+                                channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_CONNECT)
+                            }
                         }
                     }
                     else -> {
@@ -104,6 +107,8 @@ fun main(args: Array<String>) {
             byteBuffer.put(result.response.toByteArray())
             byteBuffer.limit(byteBuffer.position())
             byteBuffer.position(0)
+            
+            result.channel.register(selector, SelectionKey.OP_WRITE or SelectionKey.OP_CONNECT)
         }
     }
 }
